@@ -3,7 +3,8 @@ from collections import defaultdict
 from csv import DictWriter
 
 def getConfig():
-    path = " "
+    # Update the path to point to the .txt file
+    path = r"C:\Users\Stelaras\Downloads\config1.txt"
 
     vlan_pattern = r'vlan (\d+)'
     tagged_ports_pattern = r'tagged ([A-Z0-9,-]+)'
@@ -33,59 +34,98 @@ def getConfig():
             return (prefix, number)
         return port
 
-    # Read configuration lines from the file
-    with open(r"MockDoc.txt", "r") as file:
-        config_lines = file.readlines()
+    try:
+        # Read configuration lines from the file
+        with open(path, 'r') as file:
+            config_lines = file.readlines()
+            print("File read successfully.")  # Debug print
+            print(f"Number of lines read: {len(config_lines)}")  # Debug print
+            print(config_lines)  # Debug print
 
-    # Process each configuration line
-    for config_line in config_lines:
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return
+
+    if not config_lines:
+        print("No lines read from the file.")
+        return
+
+    vlans = []
+    vlan_config = []
+
+    for line in config_lines:
+        stripped_line = line.strip()
+        if stripped_line == 'exit':
+            vlans.append(' '.join(vlan_config))
+            vlan_config = []
+        elif stripped_line.startswith('no untagged'):
+            continue
+        else:
+            vlan_config.append(stripped_line)
+
+    if not vlans:
+        print("No VLAN configurations found.")
+        return
+
+    # Process each VLAN configuration
+    for config_line in vlans:
         # Extract VLAN number and tagged/untagged ports
-        vlan_number = re.search(vlan_pattern, config_line).group(1)
+        vlan_number_match = re.search(vlan_pattern, config_line)
+        if not vlan_number_match:
+            print(f"No VLAN number found in config line: {config_line}")
+            continue
+        vlan_number = vlan_number_match.group(1)
+
         tagged_ports_match = re.search(tagged_ports_pattern, config_line)
         untagged_ports_match = re.search(untagged_ports_pattern, config_line)
 
         tagged_ports = expand_ports(tagged_ports_match.group(1)) if tagged_ports_match else []
         untagged_ports = expand_ports(untagged_ports_match.group(1)) if untagged_ports_match else []
 
-        # Add untagged ports first to ensure they override tagged entries
-        for port in untagged_ports:
-            port_vlan_map[port]['untagged'].add(vlan_number)
-            if vlan_number in port_vlan_map[port]['tagged']:
-                port_vlan_map[port]['tagged'].remove(vlan_number)
-
         # Add tagged ports
         for port in tagged_ports:
-            if vlan_number not in port_vlan_map[port]['untagged']:
+            if vlan_number not in port_vlan_map[port]['untagged']:  # Ensure the VLAN is not already marked as untagged
                 port_vlan_map[port]['tagged'].add(vlan_number)
 
-    # Create the final port_vlan_map with aggregated T: and U: entries
-    final_port_vlan_map = {}
-    for port, vlans in port_vlan_map.items():
-        final_vlans = []
+        # Add untagged ports
+        for port in untagged_ports:
+            if vlan_number in port_vlan_map[port]['tagged']:  # Remove from tagged if it exists
+                port_vlan_map[port]['tagged'].remove(vlan_number)
+            port_vlan_map[port]['untagged'].add(vlan_number)
+
+    # Prepare data for CSV
+    combined_ports_list = []
+    combined_vlans_list = []
+
+    for port in sorted(port_vlan_map.keys(), key=port_sort_key):
+        vlans = port_vlan_map[port]
+        combined_vlans = []
         if vlans['tagged']:
-            final_vlans.append(f"T:{','.join(sorted(vlans['tagged'], key=int))}")
+            combined_vlans.append(f"T: {', '.join(sorted(vlans['tagged'], key=int))}")
         if vlans['untagged']:
-            final_vlans.append(f"U:{','.join(sorted(vlans['untagged'], key=int))}")
-        final_port_vlan_map[port] = final_vlans
+            combined_vlans.append(f"U: {', '.join(sorted(vlans['untagged'], key=int))}")
+        combined_ports_list.append(port)
+        combined_vlans_list.append(' '.join(combined_vlans))
 
-    sorted_ports = sorted(final_port_vlan_map.keys(), key=port_sort_key)
+    # Ensure lists are of the same length by padding with empty strings
+    max_length = max(len(combined_ports_list), len(combined_vlans_list))
 
-    max_port_length = max(len(port) for port in sorted_ports)
-    max_vlan_length = max(len(', '.join(vlans)) for vlans in final_port_vlan_map.values())
+    combined_ports_list.extend([''] * (max_length - len(combined_ports_list)))
+    combined_vlans_list.extend([''] * (max_length - len(combined_vlans_list)))
 
-    with open("Results.csv", "w", newline='') as outputcsv:
+    # Write to CSV
+    with open(r"C:\Users\Stelaras\Desktop\Results.csv", "w", newline='') as outputcsv:
         field_names = ['Port', 'VLANs']
         dictWriter = DictWriter(outputcsv, fieldnames=field_names)
 
         dictWriter.writeheader()
 
-        for port in sorted_ports:
-            vlans = ', '.join(final_port_vlan_map[port])
-            pairDict = {
-                'Port': port.ljust(max_port_length),
-                'VLANs': vlans.ljust(max_vlan_length)
+        for i in range(max_length):
+            row = {
+                'Port': combined_ports_list[i],
+                'VLANs': combined_vlans_list[i],
             }
-            dictWriter.writerow(pairDict)
+            dictWriter.writerow(row)
 
 if __name__ == '__main__':
     getConfig()
