@@ -2,13 +2,13 @@ import re
 from collections import defaultdict
 from csv import DictWriter
 
-def getConfig():
+def getConfig(sNo):
     # Update the path to point to the .txt file
-    path = r"C:\Users\Stelaras\Downloads\config1.txt"
+    path = r"./Switch Configurations/RMAR-"+str(sNo)+".pcc"
 
     vlan_pattern = r'vlan (\d+)'
-    tagged_ports_pattern = r'tagged ([A-Z0-9,-]+)'
-    untagged_ports_pattern = r'untagged ([A-Z0-9,-]+)'
+    tagged_ports_pattern = r'\btagged ([A-Z0-9,-]+)'
+    untagged_ports_pattern = r'\buntagged ([A-Z0-9,-]+)'
 
     # Function to expand port ranges
     def expand_ports(port_str):
@@ -16,7 +16,11 @@ def getConfig():
         port_groups = port_str.split(',')
         for group in port_groups:
             if '-' in group:
-                prefix = re.match(r'([A-Z]+)', group).group(1)  # Extract the letter prefix
+                prefix = re.match(r'([A-Z]+)', group)#.group(1)  # Extract the letter prefix
+                if prefix is None:
+                    prefix = ''
+                else:
+                    prefix = re.match(r'([A-Z]+)', group).group(1)
                 start, end = re.findall(r'(\d+)', group)  # Extract the numeric range
                 expanded_ports.extend([f"{prefix}{i}" for i in range(int(start), int(end) + 1)])
             else:
@@ -32,7 +36,7 @@ def getConfig():
             prefix = match.group(1)
             number = int(match.group(2))
             return (prefix, number)
-        return port
+        return (port, )
 
     try:
         # Read configuration lines from the file
@@ -103,7 +107,7 @@ def getConfig():
         if vlans['tagged']:
             combined_vlans.append(f"T: {', '.join(sorted(vlans['tagged'], key=int))}")
         if vlans['untagged']:
-            combined_vlans.append(f"U: {', '.join(sorted(vlans['untagged'], key=int))}")
+            combined_vlans.append(f"\nU: {', '.join(sorted(vlans['untagged'], key=int))}")
         combined_ports_list.append(port)
         combined_vlans_list.append(' '.join(combined_vlans))
 
@@ -114,7 +118,7 @@ def getConfig():
     combined_vlans_list.extend([''] * (max_length - len(combined_vlans_list)))
 
     # Write to CSV
-    with open(r"C:\Users\Stelaras\Desktop\Results.csv", "w", newline='') as outputcsv:
+    with open(r"Results-"+str(sNo)+".csv", "w", newline='') as outputcsv:
         field_names = ['Port', 'VLANs']
         dictWriter = DictWriter(outputcsv, fieldnames=field_names)
 
@@ -128,4 +132,8 @@ def getConfig():
             dictWriter.writerow(row)
 
 if __name__ == '__main__':
-    getConfig()
+    x = range(19)
+    for i in x:
+        print('going into '+str(i))
+        getConfig(i)
+        print('stepping out of '+str(i))
